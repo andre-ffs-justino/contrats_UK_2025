@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UK Public Contracts 2025</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --accent: #f59e0b;
+    --accent2: #d97706;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --purple: #a78bfa;
+    --blue: #60a5fa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: rgba(10,14,23,0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 1000; gap: 16px; transition: opacity 0.4s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay .msg { color: var(--text-muted); font-size: 14px; }
+  .loading-overlay .msg span { color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+  .progress-bar { width: 240px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; width: 0%; }
+
+  .header {
+    padding: 32px 40px 24px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #0f1520 0%, var(--bg) 100%);
+    display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .header h1 { font-size: 26px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--rose)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 2px; }
+  .header p { color: var(--text-muted); font-size: 13px; }
+  .header-actions { display: flex; gap: 10px; }
+  .btn-sm {
+    padding: 8px 16px; background: transparent; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text-muted); font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm.danger:hover { border-color: var(--rose); color: var(--rose); }
+  .btn-sm.green:hover { border-color: var(--green); color: var(--green); }
+
+  .upload-screen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 100px 40px; text-align: center; min-height: 70vh;
+  }
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 16px; padding: 56px 48px;
+    width: 100%; max-width: 520px; transition: border-color 0.2s, background 0.2s; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+  }
+  .drop-zone.dragover { border-color: var(--accent); background: rgba(245,158,11,0.04); }
+  .drop-zone .icon { width: 72px; height: 72px; border-radius: 18px; background: var(--surface); border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; font-size: 30px; transition: border-color 0.2s; }
+  .drop-zone.dragover .icon { border-color: var(--accent); }
+  .drop-zone h2 { font-size: 20px; font-weight: 600; }
+  .drop-zone p { color: var(--text-muted); max-width: 380px; line-height: 1.7; font-size: 14px; }
+  .drop-zone code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .upload-btn {
+    padding: 14px 32px; background: linear-gradient(135deg, var(--accent2), var(--accent));
+    border: none; border-radius: 10px; color: var(--bg); font-family: 'DM Sans', sans-serif;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 24px rgba(245,158,11,0.2);
+  }
+  .upload-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(245,158,11,0.3); }
+  .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; padding: 24px 40px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+  .stat-card .value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .stat-card .value.gold { color: var(--accent); }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.blue { color: var(--blue); }
+  .stat-card .value.purple { color: var(--purple); }
+
+  .main { padding: 0 40px 40px; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+  .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+  .chart-container { position: relative; height: 310px; }
+
+  .table-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .table-header { padding: 18px 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .table-header h3 { font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .search-box { flex: 1; min-width: 200px; position: relative; }
+  .search-box input {
+    width: 100%; padding: 9px 14px 9px 36px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text-muted); }
+  .search-box svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+  .filter-select {
+    padding: 9px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; cursor: pointer;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    padding: 11px 16px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-muted); background: var(--surface2); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th .arrow { margin-left: 4px; opacity: 0.4; }
+  thead th.active .arrow { opacity: 1; color: var(--accent); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.12s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 9px 16px; white-space: nowrap; }
+  .id-cell { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  .val-cell { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; }
+  .cnt-cell { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: center; }
+  .region-badge { display: inline-block; padding: 2px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+  .pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-muted); }
+  .pagination button {
+    padding: 7px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .pagination button:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-btns { display: flex; gap: 8px; align-items: center; }
+
+  .footer { padding: 20px 40px; text-align: center; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 900px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .header, .main, .stats-row, .footer { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay hidden" id="loading">
+  <div class="spinner"></div>
+  <div class="msg">Processing <span id="loadCount">0</span> records...</div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+
+<div id="app"></div>
+
+<script>
+const PER_PAGE = 50;
+let data = [], filtered = [], pg = 1;
+let sCol = 'total_value_gbp', sDir = 'desc';
+let qSearch = '', qRegion = '';
+let ch1 = null, ch2 = null;
+
+const $ = id => document.getElementById(id);
+const fGBP = v => (v==null||isNaN(v)) ? '£0.00' : '£'+v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fShort = v => v>=1e9?'£'+(v/1e9).toFixed(1)+'B':v>=1e6?'£'+(v/1e6).toFixed(1)+'M':v>=1e3?'£'+(v/1e3).toFixed(0)+'K':'£'+v.toFixed(0);
+
+function showUpload() {
+  $('app').innerHTML = `
+    <div class="header"><div><h1>🇬🇧 UK Public Contracts 2025</h1><p>Interactive dashboard — contracts by supplier, region and value</p></div></div>
+    <div class="upload-screen">
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">📊</div>
+        <h2>Load data</h2>
+        <p>Drag and drop <code>resumo_uk_2025.csv</code> here or click to select.</p>
+        <label class="upload-btn" for="fileIn">Select CSV</label>
+        <input type="file" id="fileIn" accept=".csv" style="display:none">
+        <p class="sub">Accepts .csv files up to ~50MB</p>
+      </div>
+    </div>
+    <div class="footer">Data source: <a href="https://www.find-tender.service.gov.uk/" target="_blank">Find a Tender Service</a> — Open Government Licence v3.0<br>⚠️ Values are approximate. Framework agreements are split equally among suppliers. Treat figures as directional, not precise.</div>`;
+  const z = $('dropZone'), f = $('fileIn');
+  z.addEventListener('dragover', e=>{e.preventDefault();z.classList.add('dragover');});
+  z.addEventListener('dragleave', ()=>z.classList.remove('dragover'));
+  z.addEventListener('drop', e=>{e.preventDefault();z.classList.remove('dragover');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+  z.addEventListener('click', e=>{if(e.target.tagName!=='LABEL'&&e.target.tagName!=='INPUT')f.click();});
+  f.addEventListener('change', e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+}
+
+function loadFile(file) {
+  $('loading').classList.remove('hidden');
+  $('loadCount').textContent = '0';
+  $('progressFill').style.width = '0%';
+  let cnt = 0;
+  const est = Math.max(1, file.size / 150);
+  Papa.parse(file, {
+    header:true, skipEmptyLines:true,
+    chunk: r => { cnt+=r.data.length; $('loadCount').textContent=cnt.toLocaleString('en-GB'); $('progressFill').style.width=Math.min(95,cnt/est*100)+'%'; },
+    complete: () => {
+      $('progressFill').style.width = '95%';
+      Papa.parse(file, { header:true, skipEmptyLines:true, complete: res => {
+        data = res.data.filter(r=>r.supplier_name).map(r=>({
+          supplier_id:(r.supplier_id||'').trim(),
+          supplier_name:(r.supplier_name||'').trim(),
+          region:(r.region||'').replace(/"/g,'').trim(),
+          country:(r.country||'').replace(/"/g,'').trim(),
+          qtd_contracts:parseInt(r.qtd_contracts)||0,
+          total_value_gbp:parseFloat(r.total_value_gbp)||0
+        }));
+        filtered=[...data];
+        $('progressFill').style.width='100%';
+        setTimeout(()=>{$('loading').classList.add('hidden');renderDash();},300);
+      }});
+    }
+  });
+}
+
+function resetAll() {
+  data=[]; filtered=[]; pg=1; qSearch=''; qRegion=''; sCol='total_value_gbp'; sDir='desc';
+  if(ch1){ch1.destroy();ch1=null;} if(ch2){ch2.destroy();ch2=null;}
+  showUpload();
+}
+
+function applyFilters() {
+  const s = qSearch.toLowerCase();
+  filtered = data.filter(r => {
+    const ms = !s || r.supplier_id.toLowerCase().includes(s) || r.supplier_name.toLowerCase().includes(s);
+    const mr = !qRegion || r.region === qRegion;
+    return ms && mr;
+  });
+  doSort(); pg=1; renderTable(); renderCharts();
+}
+
+function doSort() {
+  filtered.sort((a,b) => {
+    let va=a[sCol], vb=b[sCol];
+    if(typeof va==='string'){va=va.toLowerCase();vb=vb.toLowerCase();}
+    return va<vb?(sDir==='asc'?-1:1):va>vb?(sDir==='asc'?1:-1):0;
+  });
+}
+
+function renderDash() {
+  const regions=[...new Set(data.map(r=>r.region).filter(Boolean))].sort();
+  const tVal=data.reduce((a,r)=>a+r.total_value_gbp,0);
+  const tCtr=data.reduce((a,r)=>a+r.qtd_contracts,0);
+  const uSup=new Set(data.map(r=>r.supplier_name)).size;
+
+  $('app').innerHTML = `
+    <div class="header">
+      <div><h1>🇬🇧 UK Public Contracts 2025</h1><p>Interactive dashboard — ${data.length.toLocaleString('en-GB')} records loaded</p></div>
+      <div class="header-actions">
+        <button class="btn-sm green" id="exportBtn">⬇ Export</button>
+        <button class="btn-sm danger" id="resetBtn">✕ Change file</button>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="label">Total Value</div><div class="value gold">${fShort(tVal)}</div></div>
+      <div class="stat-card"><div class="label">Total Contracts</div><div class="value green">${tCtr.toLocaleString('en-GB')}</div></div>
+      <div class="stat-card"><div class="label">Unique Suppliers</div><div class="value blue">${uSup.toLocaleString('en-GB')}</div></div>
+      <div class="stat-card"><div class="label">Regions</div><div class="value purple">${regions.length}</div></div>
+    </div>
+    <div class="main">
+      <div class="charts-grid">
+        <div class="chart-card"><h3>Top 15 Suppliers by Total Value</h3><div class="chart-container"><canvas id="c1"></canvas></div></div>
+        <div class="chart-card"><h3>Total Value by Region</h3><div class="chart-container"><canvas id="c2"></canvas></div></div>
+      </div>
+      <div class="table-section">
+        <div class="table-header">
+          <h3>Supplier Data</h3>
+          <div class="search-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="searchIn" placeholder="Search by supplier ID or name...">
+          </div>
+          <select class="filter-select" id="regionSel">
+            <option value="">All regions</option>
+            ${regions.map(e=>`<option value="${e}">${e}</option>`).join('')}
+          </select>
+        </div>
+        <div class="table-wrap"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+        <div class="pagination" id="pag"></div>
+      </div>
+    </div>
+    <div class="footer">Data source: <a href="https://www.find-tender.service.gov.uk/" target="_blank">Find a Tender Service</a> — Open Government Licence v3.0<br>⚠️ Values are approximate. Framework agreements are split equally among suppliers. Treat figures as directional, not precise.</div>`;
+
+  $('searchIn').addEventListener('input', e=>{qSearch=e.target.value;applyFilters();});
+  $('regionSel').addEventListener('change', e=>{qRegion=e.target.value;applyFilters();});
+  $('exportBtn').addEventListener('click', doExport);
+  $('resetBtn').addEventListener('click', resetAll);
+  doSort(); renderThead(); renderTable(); renderCharts();
+}
+
+const COLS=[
+  {k:'supplier_id',l:'Supplier ID'},
+  {k:'supplier_name',l:'Supplier Name'},
+  {k:'region',l:'Region'},
+  {k:'country',l:'Country'},
+  {k:'qtd_contracts',l:'Contracts'},
+  {k:'total_value_gbp',l:'Total Value (GBP)'}
+];
+
+function renderThead() {
+  $('thead').innerHTML = COLS.map(c=>{
+    const act=sCol===c.k, arr=act?(sDir==='asc'?'↑':'↓'):'';
+    return `<th data-col="${c.k}" class="${act?'active':''}">${c.l} <span class="arrow">${arr}</span></th>`;
+  }).join('');
+  $('thead').querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{
+    const c=th.dataset.col;
+    if(sCol===c)sDir=sDir==='asc'?'desc':'asc'; else{sCol=c;sDir=(c==='total_value_gbp'||c==='qtd_contracts')?'desc':'asc';}
+    doSort(); pg=1; renderThead(); renderTable();
+  }));
+}
+
+function renderTable() {
+  const s=(pg-1)*PER_PAGE, rows=filtered.slice(s,s+PER_PAGE);
+  $('tbody').innerHTML = rows.map(r=>`<tr>
+    <td class="id-cell" title="${r.supplier_id}">${r.supplier_id}</td>
+    <td>${r.supplier_name}</td>
+    <td><span class="region-badge">${r.region||'—'}</span></td>
+    <td>${r.country||'—'}</td>
+    <td class="cnt-cell">${r.qtd_contracts.toLocaleString('en-GB')}</td>
+    <td class="val-cell">${fGBP(r.total_value_gbp)}</td></tr>`).join('');
+  const tp=Math.ceil(filtered.length/PER_PAGE)||1;
+  $('pag').innerHTML=`<span>${filtered.length.toLocaleString('en-GB')} records</span>
+    <div class="page-btns"><button id="prev" ${pg<=1?'disabled':''}>← Previous</button>
+    <span style="padding:0 8px;font-size:12px">${pg} / ${tp}</span>
+    <button id="next" ${pg>=tp?'disabled':''}>Next →</button></div>`;
+  $('prev').addEventListener('click',()=>{pg--;renderTable();});
+  $('next').addEventListener('click',()=>{pg++;renderTable();});
+}
+
+function renderCharts() {
+  const top=[...filtered].sort((a,b)=>b.total_value_gbp-a.total_value_gbp).slice(0,15);
+  if(ch1)ch1.destroy();
+  ch1=new Chart($('c1').getContext('2d'),{type:'bar',data:{
+    labels:top.map(r=>r.supplier_name.length>28?r.supplier_name.slice(0,28)+'…':r.supplier_name),
+    datasets:[{data:top.map(r=>r.total_value_gbp),backgroundColor:'rgba(245,158,11,0.7)',borderColor:'rgba(245,158,11,1)',borderWidth:1,borderRadius:4}]
+  },options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fGBP(c.raw),title:i=>{const r=top[i[0].dataIndex];return r.supplier_name+' ('+r.supplier_id+')';}}}},
+    scales:{x:{ticks:{color:'#64748b',callback:v=>fShort(v)},grid:{color:'rgba(30,41,59,0.5)'}},y:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}}}}});
+
+  const byR={};
+  filtered.forEach(r=>{const e=r.region||'Unknown';byR[e]=(byR[e]||0)+r.total_value_gbp;});
+  const ra=Object.entries(byR).sort((a,b)=>b[1]-a[1]);
+  const pal=['#f59e0b','#d97706','#34d399','#a78bfa','#fb7185','#60a5fa','#38bdf8','#818cf8','#4ade80','#f472b6','#facc15','#2dd4bf','#c084fc','#f87171','#22d3ee','#a3e635','#e879f9','#fb923c','#5eead4','#fca5a5','#93c5fd','#d8b4fe','#fde68a','#86efac','#c4b5fd','#fecdd3','#bae6fd'];
+  if(ch2)ch2.destroy();
+  ch2=new Chart($('c2').getContext('2d'),{type:'doughnut',data:{
+    labels:ra.map(e=>e[0]),datasets:[{data:ra.map(e=>e[1]),backgroundColor:ra.map((_,i)=>pal[i%pal.length]),borderWidth:0}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'right',labels:{color:'#94a3b8',font:{size:11},padding:6,boxWidth:12}},tooltip:{callbacks:{label:c=>c.label+': '+fGBP(c.raw)}}}}});
+}
+
+function doExport() {
+  const h='supplier_id,supplier_name,region,country,qtd_contracts,total_value_gbp\n';
+  const rows=filtered.map(r=>`"${r.supplier_id}","${r.supplier_name}","${r.region}","${r.country}",${r.qtd_contracts},${r.total_value_gbp}`).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([h+rows],{type:'text/csv;charset=utf-8;'}));
+  a.download='uk_contracts_filtered.csv'; a.click();
+}
+
+// Auto-load if CSV in same folder
+fetch('resumo_uk_2025.csv').then(r=>{if(!r.ok)throw 0;return r.text();}).then(text=>{
+  $('loading').classList.remove('hidden');
+  Papa.parse(text,{header:true,skipEmptyLines:true,complete:res=>{
+    data=res.data.filter(r=>r.supplier_name).map(r=>({supplier_id:(r.supplier_id||'').trim(),supplier_name:(r.supplier_name||'').trim(),region:(r.region||'').replace(/"/g,'').trim(),country:(r.country||'').replace(/"/g,'').trim(),qtd_contracts:parseInt(r.qtd_contracts)||0,total_value_gbp:parseFloat(r.total_value_gbp)||0}));
+    filtered=[...data]; $('loading').classList.add('hidden'); renderDash();
+  }});
+}).catch(()=>showUpload());
+</script>
+</body>
+</html>
